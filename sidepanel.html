@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Job Bid</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <!-- Top Bar -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+        <path d="M16 7V5a4 4 0 0 0-8 0v2"/>
+      </svg>
+      <span class="logo-text">Job Bid</span>
+    </div>
+    <div class="topbar-right">
+      <span id="status-dot" class="status-dot offline" title="Offline"></span>
+      <button id="logout-btn" class="btn-icon" title="Log out" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <polyline points="16 17 21 12 16 7"/>
+          <line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Login View -->
+  <section id="login-view" class="view">
+    <h2>Sign In</h2>
+    <p class="subtitle">Connect to your Job Bid account</p>
+    <form id="login-form">
+      <div class="field">
+        <label for="login-email">Email</label>
+        <input type="email" id="login-email" placeholder="you@example.com" required>
+      </div>
+      <div class="field">
+        <label for="login-password">Password</label>
+        <input type="password" id="login-password" placeholder="Password" required>
+      </div>
+      <button type="submit" class="btn-primary" id="login-submit">Sign In</button>
+      <p id="login-error" class="error-msg"></p>
+    </form>
+  </section>
+
+  <!-- Main View (logged in) -->
+  <section id="main-view" class="view" style="display:none">
+    <!-- Main Tabs -->
+    <div class="tabs">
+      <button class="tab active" data-tab="add-tab">Add Jobs</button>
+      <button class="tab" data-tab="bid-tab">Bid</button>
+    </div>
+
+    <!-- ==================== ADD JOBS TAB ==================== -->
+    <div id="add-tab" class="tab-content active">
+      <form id="manual-form">
+        <div class="field">
+          <label for="job-title">Job Title *</label>
+          <input type="text" id="job-title" placeholder="Senior Software Engineer" required>
+        </div>
+        <div class="field">
+          <label for="job-company">Company *</label>
+          <input type="text" id="job-company" placeholder="Google" required>
+        </div>
+        <div class="field">
+          <label for="job-location">Location</label>
+          <input type="text" id="job-location" placeholder="San Francisco, CA (optional)">
+        </div>
+        <div class="field">
+          <label for="job-link">Job URL</label>
+          <input type="url" id="job-link" placeholder="https://... (optional)">
+        </div>
+        <div class="field">
+          <label for="job-description">Description *</label>
+          <textarea id="job-description" rows="6" placeholder="Paste the full job description here..." required></textarea>
+        </div>
+        <button type="submit" class="btn-primary" id="manual-submit">
+          <span class="btn-label">Add Job</span>
+          <span class="btn-spinner" style="display:none"></span>
+        </button>
+        <p id="manual-status" class="status-msg"></p>
+      </form>
+    </div>
+
+    <!-- ==================== BID TAB ==================== -->
+    <div id="bid-tab" class="tab-content">
+      <div class="profile-selector">
+        <label for="bid-profile">Profile</label>
+        <select id="bid-profile"><option value="">Loading profiles...</option></select>
+      </div>
+      <div class="search-bar">
+        <input type="text" id="bid-search" placeholder="Search by company or job title...">
+        <button id="bid-search-btn" class="btn-sm">Search</button>
+      </div>
+      <div id="bid-results" class="bid-results">
+        <p class="empty-state">Select a profile and search for jobs</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <span id="session-counter">Added 0 jobs this session</span>
+    <a href="http://localhost:3000" target="_blank" rel="noopener">Open Platform</a>
+  </footer>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>
