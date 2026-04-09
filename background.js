@@ -55,6 +55,13 @@ async function authedFetch(url, options = {}) {
     res = await fetch(url, options);
   }
 
+  if (res.status === 403) {
+    const body = await res.clone().json().catch(() => ({}));
+    if (body.restricted) {
+      throw new Error('ACCOUNT_RESTRICTED');
+    }
+  }
+
   return res;
 }
 
