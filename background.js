@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = 'https://job-bid-server.onrender.com/api';
 
 chrome.sidePanel
   .setPanelBehavior({ openPanelOnActionClick: true })
