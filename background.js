@@ -1,4 +1,5 @@
 const API_BASE = 'https://job-bid-server.onrender.com/api';
+const EXTENSION_VERSION = 1;
 
 chrome.sidePanel
   .setPanelBehavior({ openPanelOnActionClick: true })
@@ -45,14 +46,24 @@ async function authedFetch(url, options = {}) {
     ...options.headers,
     Authorization: `Bearer ${accessToken}`,
     'Content-Type': 'application/json',
+    'X-Extension-Version': String(EXTENSION_VERSION),
   };
 
   let res = await fetch(url, options);
+
+  if (res.status === 426) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error('UPGRADE_REQUIRED:' + (body.downloadUrl || ''));
+  }
 
   if (res.status === 401) {
     accessToken = await refreshAccessToken();
     options.headers.Authorization = `Bearer ${accessToken}`;
     res = await fetch(url, options);
+    if (res.status === 426) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error('UPGRADE_REQUIRED:' + (body.downloadUrl || ''));
+    }
   }
 
   if (res.status === 403) {
@@ -72,15 +83,26 @@ async function authedFetchBlob(url) {
   let { accessToken } = await getTokens();
   if (!accessToken) throw new Error('Not logged in');
 
-  let res = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
+  const headers = {
+    Authorization: `Bearer ${accessToken}`,
+    'X-Extension-Version': String(EXTENSION_VERSION),
+  };
+
+  let res = await fetch(url, { headers });
+
+  if (res.status === 426) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error('UPGRADE_REQUIRED:' + (body.downloadUrl || ''));
+  }
 
   if (res.status === 401) {
     accessToken = await refreshAccessToken();
-    res = await fetch(url, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
+    headers.Authorization = `Bearer ${accessToken}`;
+    res = await fetch(url, { headers });
+    if (res.status === 426) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error('UPGRADE_REQUIRED:' + (body.downloadUrl || ''));
+    }
   }
 
   if (res.status === 403) {
@@ -105,9 +127,16 @@ async function handleMessage(msg) {
     case 'LOGIN': {
       const res = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Extension-Version': String(EXTENSION_VERSION),
+        },
         body: JSON.stringify({ email: msg.email, password: msg.password }),
       });
+      if (res.status === 426) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error('UPGRADE_REQUIRED:' + (body.downloadUrl || ''));
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Login failed');
 
@@ -138,6 +167,10 @@ async function handleMessage(msg) {
         }
         return { success: true, loggedIn: true, user };
       } catch (err) {
+        if (err.message && err.message.startsWith('UPGRADE_REQUIRED:')) {
+          const downloadUrl = err.message.split('UPGRADE_REQUIRED:')[1] || '';
+          return { success: true, loggedIn: false, reason: 'UPGRADE_REQUIRED', downloadUrl };
+        }
         if (err.message === 'ACCOUNT_RESTRICTED') {
           await clearTokens();
           return { success: true, loggedIn: false, reason: 'ACCOUNT_RESTRICTED' };

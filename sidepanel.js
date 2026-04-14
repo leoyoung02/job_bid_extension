@@ -4,6 +4,8 @@ let sessionCount = 0;
 let selectedProfileId = '';
 
 // --- DOM refs ---
+const upgradeView = $('#upgrade-view');
+const upgradeLink = $('#upgrade-link');
 const loginView = $('#login-view');
 const mainView = $('#main-view');
 const loginForm = $('#login-form');
@@ -28,7 +30,9 @@ document.addEventListener('DOMContentLoaded', checkAuth);
 async function checkAuth() {
   try {
     const res = await sendMessage({ type: 'CHECK_AUTH' });
-    if (res.loggedIn) {
+    if (res.reason === 'UPGRADE_REQUIRED') {
+      showUpgrade(res.downloadUrl);
+    } else if (res.loggedIn) {
       showMain();
     } else {
       showLogin();
@@ -43,7 +47,18 @@ async function checkAuth() {
   }
 }
 
+function showUpgrade(downloadUrl) {
+  upgradeView.style.display = '';
+  loginView.style.display = 'none';
+  mainView.style.display = 'none';
+  logoutBtn.style.display = 'none';
+  statusDot.className = 'status-dot offline';
+  statusDot.title = 'Update required';
+  if (downloadUrl) upgradeLink.href = downloadUrl;
+}
+
 function showLogin() {
+  upgradeView.style.display = 'none';
   loginView.style.display = '';
   mainView.style.display = 'none';
   logoutBtn.style.display = 'none';
@@ -52,6 +67,7 @@ function showLogin() {
 }
 
 async function showMain() {
+  upgradeView.style.display = 'none';
   loginView.style.display = 'none';
   mainView.style.display = '';
   logoutBtn.style.display = '';
@@ -114,6 +130,10 @@ loginForm.addEventListener('submit', async (e) => {
       showMain();
       loginForm.reset();
     } else {
+      if (res.error && res.error.startsWith('UPGRADE_REQUIRED:')) {
+        showUpgrade(res.error.split('UPGRADE_REQUIRED:')[1] || '');
+        return;
+      }
       if (res.error === 'ACCOUNT_PENDING') {
         loginError.textContent = 'Your account is pending admin approval. Please wait.';
       } else if (res.error === 'ACCOUNT_RESTRICTED') {
