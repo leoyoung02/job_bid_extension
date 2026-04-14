@@ -21,7 +21,7 @@ async function refreshAccessToken() {
   const { refreshToken } = await getTokens();
   if (!refreshToken) throw new Error('No refresh token');
 
-  const res = await fetch(`${API_BASE}/auth/refresh-token`, {
+  const res = await fetch(`${API_BASE}/auth/refresh`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ refreshToken }),
@@ -60,6 +60,9 @@ async function authedFetch(url, options = {}) {
     if (body.restricted) {
       throw new Error('ACCOUNT_RESTRICTED');
     }
+    if (body.pending) {
+      throw new Error('ACCOUNT_PENDING');
+    }
   }
 
   return res;
@@ -78,6 +81,12 @@ async function authedFetchBlob(url) {
     res = await fetch(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
+  }
+
+  if (res.status === 403) {
+    const body = await res.clone().json().catch(() => ({}));
+    if (body.restricted) throw new Error('ACCOUNT_RESTRICTED');
+    if (body.pending) throw new Error('ACCOUNT_PENDING');
   }
 
   if (!res.ok) throw new Error(`Download failed (${res.status})`);
@@ -101,6 +110,11 @@ async function handleMessage(msg) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Login failed');
+
+      if (data.user && !data.user.isApproved) {
+        throw new Error('ACCOUNT_PENDING');
+      }
+
       await saveTokens(data.accessToken, data.refreshToken);
       return { success: true, user: data.user };
     }
@@ -114,9 +128,24 @@ async function handleMessage(msg) {
       const { accessToken } = await getTokens();
       if (!accessToken) return { success: true, loggedIn: false };
       try {
-        const res = await authedFetch(`${API_BASE}/profiles`);
-        return { success: true, loggedIn: res.ok };
-      } catch {
+        const res = await authedFetch(`${API_BASE}/auth/me`);
+        if (!res.ok) return { success: true, loggedIn: false };
+        const data = await res.json();
+        const user = data.user || data;
+        if (!user.isApproved) {
+          await clearTokens();
+          return { success: true, loggedIn: false, reason: 'ACCOUNT_PENDING' };
+        }
+        return { success: true, loggedIn: true, user };
+      } catch (err) {
+        if (err.message === 'ACCOUNT_RESTRICTED') {
+          await clearTokens();
+          return { success: true, loggedIn: false, reason: 'ACCOUNT_RESTRICTED' };
+        }
+        if (err.message === 'ACCOUNT_PENDING') {
+          await clearTokens();
+          return { success: true, loggedIn: false, reason: 'ACCOUNT_PENDING' };
+        }
         return { success: true, loggedIn: false };
       }
     }

@@ -32,6 +32,11 @@ async function checkAuth() {
       showMain();
     } else {
       showLogin();
+      if (res.reason === 'ACCOUNT_PENDING') {
+        loginError.textContent = 'Your account is pending admin approval.';
+      } else if (res.reason === 'ACCOUNT_RESTRICTED') {
+        loginError.textContent = 'Your account has been restricted. Contact support.';
+      }
     }
   } catch {
     showLogin();
@@ -109,10 +114,22 @@ loginForm.addEventListener('submit', async (e) => {
       showMain();
       loginForm.reset();
     } else {
-      loginError.textContent = res.error || 'Login failed';
+      if (res.error === 'ACCOUNT_PENDING') {
+        loginError.textContent = 'Your account is pending admin approval. Please wait.';
+      } else if (res.error === 'ACCOUNT_RESTRICTED') {
+        loginError.textContent = 'Your account has been restricted. Contact support.';
+      } else {
+        loginError.textContent = res.error || 'Login failed';
+      }
     }
   } catch (err) {
-    loginError.textContent = err.message || 'Login failed';
+    if (err.message === 'ACCOUNT_PENDING') {
+      loginError.textContent = 'Your account is pending admin approval. Please wait.';
+    } else if (err.message === 'ACCOUNT_RESTRICTED') {
+      loginError.textContent = 'Your account has been restricted. Contact support.';
+    } else {
+      loginError.textContent = err.message || 'Login failed';
+    }
   } finally {
     loginSubmit.disabled = false;
     loginSubmit.textContent = 'Sign In';
