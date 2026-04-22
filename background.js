@@ -111,8 +111,40 @@ async function authedFetchBlob(url) {
     if (body.pending) throw new Error('ACCOUNT_PENDING');
   }
 
-  if (!res.ok) throw new Error(`Download failed (${res.status})`);
+  if (!res.ok) {
+    const body = await res.clone().json().catch(() => ({}));
+    throw new Error(body.message || `Download failed (${res.status})`);
+  }
   return res.blob();
+}
+
+function waitForDownloadCompletion(downloadId, timeoutMs = 120000) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      chrome.downloads.onChanged.removeListener(listener);
+      reject(new Error('Download timed out before completion'));
+    }, timeoutMs);
+
+    function finish(fn, value) {
+      clearTimeout(timeout);
+      chrome.downloads.onChanged.removeListener(listener);
+      fn(value);
+    }
+
+    function listener(delta) {
+      if (delta.id !== downloadId) return;
+      if (delta.state?.current === 'complete') {
+        finish(resolve, downloadId);
+        chrome.downloads.show(downloadId);
+        return;
+      }
+      if (delta.state?.current === 'interrupted') {
+        finish(reject, new Error('Download was interrupted'));
+      }
+    }
+
+    chrome.downloads.onChanged.addListener(listener);
+  });
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -240,17 +272,43 @@ async function handleMessage(msg) {
           mode: r.mode,
           profileName: r.profileName,
           hasPdf: r.hasPdf,
+          retentionState: r.retentionState,
+          canDownloadDocx: r.canDownloadDocx,
+          canDownloadPdf: r.canDownloadPdf,
+          canRestoreDocx: r.canRestoreDocx,
+          canRestorePdf: r.canRestorePdf,
+          needsExtensionBackup: r.needsExtensionBackup,
+          expiringArtifactsDownloaded: r.expiringArtifactsDownloaded,
+          artifactExpiresAt: r.artifactExpiresAt,
+          boneExpiresAt: r.boneExpiresAt,
         })),
       }));
 
       return { success: true, jobs };
     }
 
+    case 'GET_EXPIRING_FILES': {
+      const res = await authedFetch(`${API_BASE}/resumes/expiring-files`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to load expiring files');
+      return { success: true, resumes: data.resumes || [], warningDays: data.warningDays || 7 };
+    }
+
+    case 'MARK_EXPIRING_FILES_DOWNLOADED': {
+      const res = await authedFetch(`${API_BASE}/resumes/expiring-files/mark-downloaded`, {
+        method: 'POST',
+        body: JSON.stringify({ resumeIds: msg.resumeIds || [] }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to mark expiring files as downloaded');
+      return { success: true, updated: data.updated || 0 };
+    }
+
     case 'DOWNLOAD_RESUME': {
-      const { resumeId, isPdf, suggestedPath } = msg;
-      const endpoint = isPdf
-        ? `${API_BASE}/resumes/download-pdf/${resumeId}`
-        : `${API_BASE}/resumes/download/${resumeId}`;
+      const { resumeId, isPdf, suggestedPath, restore } = msg;
+      const endpoint = restore
+        ? (isPdf ? `${API_BASE}/resumes/restore-pdf/${resumeId}` : `${API_BASE}/resumes/restore/${resumeId}`)
+        : (isPdf ? `${API_BASE}/resumes/download-pdf/${resumeId}` : `${API_BASE}/resumes/download/${resumeId}`);
 
       const blob = await authedFetchBlob(endpoint);
       const reader = new FileReader();
@@ -274,12 +332,7 @@ async function handleMessage(msg) {
         );
       });
 
-      chrome.downloads.onChanged.addListener(function listener(delta) {
-        if (delta.id === downloadId && delta.state?.current === 'complete') {
-          chrome.downloads.onChanged.removeListener(listener);
-          chrome.downloads.show(downloadId);
-        }
-      });
+      await waitForDownloadCompletion(downloadId);
 
       return { success: true, downloadId };
     }

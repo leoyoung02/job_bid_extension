@@ -2,6 +2,7 @@ const $ = (sel) => document.querySelector(sel);
 
 let sessionCount = 0;
 let selectedProfileId = '';
+let expiringResumes = [];
 
 // --- DOM refs ---
 const upgradeView = $('#upgrade-view');
@@ -20,6 +21,10 @@ const manualSubmit = $('#manual-submit');
 const manualStatus = $('#manual-status');
 
 const bidProfileSelect = $('#bid-profile');
+const expiringFilesPanel = $('#expiring-files-panel');
+const expiringFilesSubtitle = $('#expiring-files-subtitle');
+const expiringFilesList = $('#expiring-files-list');
+const expiringFilesDownloadAllBtn = $('#expiring-files-download-all');
 const bidSearch = $('#bid-search');
 const bidSearchBtn = $('#bid-search-btn');
 const bidResults = $('#bid-results');
@@ -74,6 +79,7 @@ async function showMain() {
   statusDot.className = 'status-dot online';
   statusDot.title = 'Connected';
   await loadProfiles();
+  await loadExpiringFiles();
 }
 
 // --- Profiles ---
@@ -112,6 +118,42 @@ bidProfileSelect.addEventListener('change', () => {
   const query = bidSearch.value.trim();
   if (query) doSearch();
 });
+
+async function loadExpiringFiles() {
+  try {
+    const res = await sendMessage({ type: 'GET_EXPIRING_FILES' });
+    expiringResumes = Array.isArray(res.resumes) ? res.resumes : [];
+    renderExpiringFiles(res.warningDays || 7);
+  } catch (_err) {
+    expiringResumes = [];
+    renderExpiringFiles(7);
+  }
+}
+
+function renderExpiringFiles(warningDays) {
+  if (!expiringResumes.length) {
+    expiringFilesPanel.style.display = 'none';
+    expiringFilesList.innerHTML = '';
+    return;
+  }
+
+  expiringFilesPanel.style.display = '';
+  expiringFilesSubtitle.textContent = `Download these from the extension during the ${warningDays}-day warning window before hot storage ends.`;
+  expiringFilesList.innerHTML = expiringResumes.map((resume) => {
+    const job = resume.jobId || {};
+    const profileName = typeof resume.profileId === 'object' ? resume.profileId?.name : '';
+    const formats = ['DOCX'].concat(resume.hasPdfArtifact ? ['PDF'] : []).join(' + ');
+    return `
+      <div class="expiring-item">
+        <div>
+          <div class="expiring-item-title">${escapeHTML(job.title || 'Resume')} &middot; ${escapeHTML(job.company || '')}</div>
+          <div class="expiring-item-meta">${escapeHTML(profileName || 'Default profile')} &middot; ${formats}</div>
+        </div>
+        <div class="expiring-item-status">${resume.expiringArtifactsDownloaded ? 'Downloaded' : 'Pending'}</div>
+      </div>
+    `;
+  }).join('');
+}
 
 // --- Login ---
 loginForm.addEventListener('submit', async (e) => {
@@ -208,6 +250,7 @@ bidSearchBtn.addEventListener('click', () => doSearch());
 bidSearch.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') doSearch();
 });
+expiringFilesDownloadAllBtn.addEventListener('click', () => downloadAllExpiringFiles());
 
 async function doSearch() {
   const query = bidSearch.value.trim();
@@ -255,6 +298,10 @@ function createJobCard(job) {
   if (resumes.length > 0) {
     resumeHTML = resumes.map((r) => {
       const profileLabel = r.profileName || 'Default';
+      const badges = [
+        r.needsExtensionBackup ? '<span class="resume-badge warning">Expiring files</span>' : '',
+        r.retentionState === 'bone_only' ? '<span class="resume-badge archived">Bone only</span>' : '',
+      ].filter(Boolean).join('');
       return `
         <div class="job-card-resume">
           <div>
@@ -262,8 +309,8 @@ function createJobCard(job) {
             <div class="resume-profile">${profileLabel} &middot; ${r.mode || 'standard'}</div>
           </div>
           <div class="resume-actions">
-            <button class="btn-download" data-resume-id="${r._id}" data-job-id="${job._id}" data-filename="${r.fileName}" data-company="${job.company}" data-title="${job.title}" title="Download DOCX">DOCX</button>
-            ${r.hasPdf ? `<button class="btn-download pdf" data-resume-id="${r._id}" data-job-id="${job._id}" data-filename="${r.fileName}" data-company="${job.company}" data-title="${job.title}" data-pdf="true" title="Download PDF">PDF</button>` : ''}
+            <button class="btn-download" ${!r.canDownloadDocx && !r.canRestoreDocx ? 'disabled' : ''} data-resume-id="${r._id}" data-job-id="${job._id}" data-filename="${r.fileName}" data-company="${job.company}" data-title="${job.title}" data-restore="${r.canRestoreDocx ? 'true' : 'false'}" title="${r.canRestoreDocx ? 'Restore DOCX' : 'Download DOCX'}">${r.canRestoreDocx ? 'Restore' : 'DOCX'}</button>
+            ${r.hasPdf ? `<button class="btn-download pdf" ${!r.canDownloadPdf && !r.canRestorePdf ? 'disabled' : ''} data-resume-id="${r._id}" data-job-id="${job._id}" data-filename="${r.fileName}" data-company="${job.company}" data-title="${job.title}" data-pdf="true" data-restore="${r.canRestorePdf ? 'true' : 'false'}" title="${r.canRestorePdf ? 'Restore PDF' : 'Download PDF'}">${r.canRestorePdf ? 'Re-PDF' : 'PDF'}</button>` : ''}
           </div>
         </div>`;
     }).join('');
@@ -277,6 +324,12 @@ function createJobCard(job) {
       <div class="job-card-date">${date}</div>
     </div>
     <div class="job-card-company">${escapeHTML(job.company)}${job.location ? ' &middot; ' + escapeHTML(job.location) : ''}</div>
+    ${resumes.some((r) => r.needsExtensionBackup || r.retentionState === 'bone_only') ? `<div class="job-card-badges">${resumes.map((r) => {
+      const parts = [];
+      if (r.needsExtensionBackup) parts.push('<span class="resume-badge warning">Expiring files</span>');
+      if (r.retentionState === 'bone_only') parts.push('<span class="resume-badge archived">Bone only</span>');
+      return parts.join('');
+    }).join('')}</div>` : ''}
     ${resumeHTML}
   `;
 
@@ -292,6 +345,7 @@ async function handleDownload(btn) {
   const company = btn.dataset.company || 'Unknown';
   const title = btn.dataset.title || 'Resume';
   const isPdf = btn.dataset.pdf === 'true';
+  const restore = btn.dataset.restore === 'true';
   const origName = btn.dataset.filename || 'resume';
 
   btn.disabled = true;
@@ -311,6 +365,7 @@ async function handleDownload(btn) {
       type: 'DOWNLOAD_RESUME',
       resumeId,
       isPdf,
+      restore,
       suggestedPath: folderPath,
     });
     if (!res.success) throw new Error(res.error || 'Download failed');
@@ -319,6 +374,60 @@ async function handleDownload(btn) {
   } finally {
     btn.disabled = false;
     btn.textContent = origText;
+  }
+}
+
+async function downloadAllExpiringFiles() {
+  if (!expiringResumes.length) return;
+
+  expiringFilesDownloadAllBtn.disabled = true;
+  const originalText = expiringFilesDownloadAllBtn.textContent;
+  expiringFilesDownloadAllBtn.textContent = 'Downloading...';
+
+  const successfulResumeIds = [];
+
+  try {
+    for (const resume of expiringResumes) {
+      let resumeSucceeded = true;
+      const job = resume.jobId || {};
+      const basePayload = {
+        resumeId: resume._id,
+        suggestedPathBase: `RoundTable/${sanitizeFilename(job.company || 'Unknown')}_${sanitizeFilename(job.title || 'Resume')}_${String(job._id || '').slice(-6)}`,
+      };
+
+      const docxResponse = await sendMessage({
+        type: 'DOWNLOAD_RESUME',
+        resumeId: basePayload.resumeId,
+        isPdf: false,
+        restore: false,
+        suggestedPath: `${basePayload.suggestedPathBase}/${resume.fileName || 'resume.docx'}`,
+      });
+      if (!docxResponse.success) resumeSucceeded = false;
+
+      if (resume.hasPdfArtifact) {
+        const pdfResponse = await sendMessage({
+          type: 'DOWNLOAD_RESUME',
+          resumeId: basePayload.resumeId,
+          isPdf: true,
+          restore: false,
+          suggestedPath: `${basePayload.suggestedPathBase}/${(resume.pdfFileName || resume.fileName || 'resume.docx').replace(/\.docx$/i, '.pdf')}`,
+        });
+        if (!pdfResponse.success) resumeSucceeded = false;
+      }
+
+      if (resumeSucceeded) successfulResumeIds.push(resume._id);
+    }
+
+    if (successfulResumeIds.length > 0) {
+      await sendMessage({ type: 'MARK_EXPIRING_FILES_DOWNLOADED', resumeIds: successfulResumeIds });
+    }
+    await loadExpiringFiles();
+    alert(`Downloaded ${successfulResumeIds.length} expiring resume set(s).`);
+  } catch (err) {
+    alert('Bulk download failed: ' + (err.message || err));
+  } finally {
+    expiringFilesDownloadAllBtn.disabled = false;
+    expiringFilesDownloadAllBtn.textContent = originalText;
   }
 }
 

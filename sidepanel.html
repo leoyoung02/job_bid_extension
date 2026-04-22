@@ -105,6 +105,16 @@
         <label for="bid-profile">Profile</label>
         <select id="bid-profile"><option value="">Loading profiles...</option></select>
       </div>
+      <div id="expiring-files-panel" class="expiring-panel" style="display:none">
+        <div class="expiring-panel-header">
+          <div>
+            <div class="expiring-title">Expiring Resume Files</div>
+            <p id="expiring-files-subtitle" class="expiring-subtitle">Download these from the extension before hot storage ends.</p>
+          </div>
+          <button id="expiring-files-download-all" class="btn-sm">Download All</button>
+        </div>
+        <div id="expiring-files-list" class="expiring-files-list"></div>
+      </div>
       <div class="search-bar">
         <input type="text" id="bid-search" placeholder="Search by company or job title...">
         <button id="bid-search-btn" class="btn-sm">Search</button>
